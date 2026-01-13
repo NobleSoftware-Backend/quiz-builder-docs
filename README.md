@@ -1,4 +1,4 @@
-# Project Triliunan Quiz Builder
+# Project Quiz Builder
 
 This Google Apps Script project allows you to build quizzes directly in Google Docs and export them to JSON format. It features robust validation, LaTeX equation support (MathJax), and a live visual preview.
 
