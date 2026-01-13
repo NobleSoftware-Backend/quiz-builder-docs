@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8" />
+  <title>Quiz Preview</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #f6f7fb; }
+    .toolbar { position: sticky; top: 0; background: #f6f7fb; padding: 8px 0 12px; border-bottom: 1px solid #e6e6e6; }
+    .hint { color: #666; font-size: 12px; }
+    .quiz { max-width: 900px; margin: 0 auto; }
+    .question { background: #fff; border: 1px solid #e6e6e6; border-radius: 10px; padding: 14px 14px; margin: 12px 0; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .q-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+    .q-title { font-weight: 700; }
+    .q-id { color: #777; font-size: 12px; }
+    .q-content p { margin: 8px 0; }
+    .q-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    .q-content td, .q-content th { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }
+    .options { margin: 10px 0 0; padding-left: 22px; }
+    .options li { margin: 6px 0; }
+    .is-correct { background: #e6f4ea; border-radius: 6px; padding: 2px 6px; }
+    img { max-width: 100%; height: auto; }
+    code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }
+  </style>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="hint">MathJax preview. Images are embedded as data URLs for preview only.</div>
+  </div>
+
+  <div class="quiz" id="quiz"><?!= previewHtml ?></div>
+
+  <script>
+    (function() {
+      var container = document.getElementById('quiz');
+      function typeset() {
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([container]).catch(function(err) {
+            console.error(err);
+          });
+        }
+      }
+
+      // Wait a bit in case MathJax loads after DOM paint
+      setTimeout(typeset, 50);
+      setTimeout(typeset, 300);
+    })();
+  </script>
+</body>
+</html>

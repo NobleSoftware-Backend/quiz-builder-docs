@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 10px;
+      margin: 0;
+      background-color: #f5f5f5;
+    }
+    
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+    
+    .btn-primary {
+      background-color: #4285f4;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background-color: #3367d6;
+    }
+    
+    .btn-success {
+      background-color: #34a853;
+      color: white;
+    }
+    
+    .btn-success:hover {
+      background-color: #2d9249;
+    }
+    
+    .btn-secondary {
+      background-color: #e8eaed;
+      color: #202124;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #dadce0;
+    }
+    
+    .btn-warning {
+      background-color: #fbbc04;
+      color: #202124;
+    }
+    
+    .btn-warning:hover {
+      background-color: #f9ab00;
+    }
+    
+    .validation-status {
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    
+    .status-success {
+      background-color: #e6f4ea;
+      color: #137333;
+      border: 1px solid #34a853;
+    }
+    
+    .status-error {
+      background-color: #fce8e6;
+      color: #c5221f;
+      border: 1px solid #ea4335;
+    }
+    
+    .status-info {
+      background-color: #e8f0fe;
+      color: #185abc;
+      border: 1px solid #4285f4;
+    }
+    
+    .icon {
+      margin-right: 5px;
+    }
+    
+    .divider {
+      height: 1px;
+      background-color: #dadce0;
+      margin: 15px 0;
+    }
+    
+    .help-text {
+      font-size: 12px;
+      color: #5f6368;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+    
+    .spinner {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(245, 245, 245, 0.75);
+      backdrop-filter: blur(1px);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .spinner.active {
+      display: flex;
+    }
+
+    .spinner-card {
+      background: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      padding: 18px 16px;
+      width: 100%;
+      max-width: 260px;
+    }
+
+    .spinner-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .spinner-subtitle {
+      font-size: 12px;
+      color: #5f6368;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="section">
+    <div class="section-title">📝 Wrap Selection</div>
+    <button class="btn-primary" onclick="wrapQuestionBlock()">
+      <span class="icon">🔤</span> Wrap as Question Block
+    </button>
+    <button class="btn-success" onclick="wrapOptions()">
+      <span class="icon">✓</span> Wrap as Options
+    </button>
+    <button class="btn-warning" onclick="markCorrect()">
+      <span class="icon">⭐</span> Mark as Correct
+    </button>
+    <button class="btn-secondary" onclick="renumberLabels()">
+      <span class="icon">🔢</span> Renumber Question Labels
+    </button>
+    <div class="help-text">
+        <strong>Question Block:</strong> Select question + option list<br>
+        <strong>Options:</strong> Select just the option lines (will convert to A, B, C list)<br>
+        <strong>Correct Answer:</strong> Mark with <code>&lt;&gt;</code> at the start of the option.
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">➕ Insert Templates</div>
+    <button class="btn-secondary" onclick="insertQuestion()">
+      <span class="icon">❓</span> New Question
+    </button>
+    <button class="btn-secondary" onclick="insertOption()">
+      <span class="icon">📋</span> New Option
+    </button>
+    <button class="btn-secondary" onclick="insertSeparator()">
+      <span class="icon">━</span> Add Separator
+    </button>
+  </div>
+  
+  <div class="divider"></div>
+
+  <div class="section">
+    <div class="section-title">👀 Preview</div>
+    <div class="help-text" style="margin-bottom: 8px;">
+      Preview renders parsed HTML + MathJax (LaTeX inside <code>$...$</code>).
+    </div>
+    <select id="previewSelect" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #dadce0; margin-bottom: 8px;">
+      <option value="all">All Questions</option>
+    </select>
+    <button class="btn-secondary" onclick="openPreview()">
+      <span class="icon">🪟</span> Open Preview
+    </button>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">✓ Validate & Export</div>
+    <button class="btn-warning" onclick="validate()">
+      <span class="icon">🔍</span> Check Format
+    </button>
+    
+    <div id="validationStatus"></div>
+    
+    <button class="btn-success" onclick="exportQuiz()" id="exportBtn" style="margin-top: 10px;">
+      <span class="icon">📦</span> Export Quiz (ZIP)
+    </button>
+    
+    <div class="help-text" style="margin-top: 10px;">
+      <strong>Export Info:</strong><br>
+      • &lt;10MB: Direct download<br>
+      • 10-50MB: Saved to Google Drive<br>
+      • &gt;50MB: Error (too large)
+    </div>
+  </div>
+  
+  <div class="spinner" id="spinner" aria-live="polite" aria-busy="false">
+    <div class="spinner-card">
+      <div class="spinner-title">Processing…</div>
+      <div class="spinner-subtitle">Please wait. Controls are temporarily disabled.</div>
+    </div>
+  </div>
+  
+  <script>
+    let _isBusy = false;
+
+    function _setControlsDisabled(disabled) {
+      document.querySelectorAll('button, select, input, textarea').forEach(function(el) {
+        if (disabled) el.setAttribute('disabled', 'disabled');
+        else el.removeAttribute('disabled');
+      });
+    }
+
+    // Populate preview question list on load
+    (function initPreviewList() {
+      google.script.run
+        .withSuccessHandler(function(items) {
+          const select = document.getElementById('previewSelect');
+          if (!select) return;
+
+          // Keep first option (All)
+          while (select.options.length > 1) select.remove(1);
+
+          (items || []).forEach(function(it) {
+            const opt = document.createElement('option');
+            opt.value = it.value;
+            opt.textContent = it.label;
+            select.appendChild(opt);
+          });
+        })
+        .getPreviewQuestionList();
+    })();
+
+    function openPreview() {
+      showSpinner();
+      const select = document.getElementById('previewSelect');
+      const value = select ? select.value : 'all';
+      google.script.run
+        .withSuccessHandler(function() {
+          hideSpinner();
+        })
+        .withFailureHandler(function(err) {
+          hideSpinner();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .openPreviewDialog(value);
+    }
+
+    function showSpinner() {
+      if (_isBusy) return;
+      _isBusy = true;
+      _setControlsDisabled(true);
+      const sp = document.getElementById('spinner');
+      sp.classList.add('active');
+      sp.setAttribute('aria-busy', 'true');
+    }
+    
+    function hideSpinner() {
+      const sp = document.getElementById('spinner');
+      sp.classList.remove('active');
+      sp.setAttribute('aria-busy', 'false');
+      _setControlsDisabled(false);
+      _isBusy = false;
+    }
+    
+    function showStatus(message, type) {
+      const statusDiv = document.getElementById('validationStatus');
+      statusDiv.className = 'validation-status status-' + type;
+      statusDiv.innerHTML = message;
+    }
+    
+    function wrapQuestionBlock() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() {
+          hideSpinner();
+        })
+        .withFailureHandler(function(err) {
+            hideSpinner();
+            showStatus('Error: ' + err.message, 'error');
+        })
+        .wrapAsQuestionBlock();
+    }
+    
+    function wrapOptions() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() {
+          hideSpinner();
+        })
+        .withFailureHandler(function(err) {
+            hideSpinner();
+            showStatus('Error: ' + err.message, 'error');
+        })
+        .wrapAsOptions();
+    }
+    
+    function markCorrect() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() {
+          hideSpinner();
+        })
+        .withFailureHandler(function(err) {
+            hideSpinner();
+            showStatus('Error: ' + err.message, 'error');
+        })
+        .toggleCorrectAnswer();
+    }
+
+    function renumberLabels() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() {
+          hideSpinner();
+          showStatus('Renumbered question labels to [QUESTION#1], [QUESTION#2], ...', 'info');
+        })
+        .withFailureHandler(function(err) {
+          hideSpinner();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .renumberQuestionLabels();
+    }
+
+    function insertQuestion() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() { hideSpinner(); })
+        .withFailureHandler(function(err) {
+          hideSpinner();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .insertNewQuestion();
+    }
+    
+    function insertOption() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() { hideSpinner(); })
+        .withFailureHandler(function(err) {
+          hideSpinner();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .insertNewOption();
+    }
+    
+    function insertSeparator() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() { hideSpinner(); })
+        .withFailureHandler(function(err) {
+          hideSpinner();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .addSeparator();
+    }
+    
+    function validate() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function(result) {
+          hideSpinner();
+        })
+        .withFailureHandler(function(err) {
+            hideSpinner();
+            showStatus('Error: ' + err.message, 'error');
+        })
+        .validateAndShowResults();
+    }
+    
+    function exportQuiz() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() {
+          hideSpinner();
+        })
+        .withFailureHandler(function(err) {
+            hideSpinner();
+            showStatus('Export Error: ' + err.message, 'error');
+        })
+        .exportQuiz();
+    }
+  </script>
+</body>
+</html>
