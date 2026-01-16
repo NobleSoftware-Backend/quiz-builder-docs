@@ -6,17 +6,61 @@ class QuizParser {
   /**
    * Parses document body into a Quiz Model.
    * @param {GoogleAppsScript.Document.Body} body 
-   * @returns {{questions: Array, images: Object}}
+   * @returns {{quizType: 'MCQ'|'ESSAY', questions: Array, images: Object}}
    */
   static parse(body) {
     const result = {
+      quizType: null,
       questions: [],
       images: {} // { filename: blob }
     };
-    
+
+    // Strict: BEGIN must be the first non-empty line.
+    // We treat the first non-empty PARAGRAPH/LIST_ITEM text as the line.
+    // Any other element (table/hr/image) before BEGIN is an error.
     const numChildren = body.getNumChildren();
+    let beginIndex = -1;
+    let beginLine = 0;
+    for (let i = 0; i < numChildren; i++) {
+      const element = body.getChild(i);
+      const type = element.getType();
+
+      if (type === DocumentApp.ElementType.PARAGRAPH) {
+        const t = element.asParagraph().getText().trim();
+        if (!t) continue;
+        const begin = this._parseBeginTag(t);
+        if (!begin) {
+          throw new Error(`Missing quiz type header. The first non-empty line must be [BEGIN#MCQ] or [BEGIN#ESSAY]. (Found: "${t}")`);
+        }
+        result.quizType = begin.quizType;
+        beginIndex = i;
+        beginLine = i + 1;
+        break;
+      }
+
+      if (type === DocumentApp.ElementType.LIST_ITEM) {
+        const t = element.asListItem().getText().trim();
+        if (!t) continue;
+        const begin = this._parseBeginTag(t);
+        if (!begin) {
+          throw new Error(`Missing quiz type header. The first non-empty line must be [BEGIN#MCQ] or [BEGIN#ESSAY]. (Found: "${t}")`);
+        }
+        result.quizType = begin.quizType;
+        beginIndex = i;
+        beginLine = i + 1;
+        break;
+      }
+
+      // Any other element before BEGIN is considered non-empty structure.
+      throw new Error('Missing quiz type header. The first non-empty line must be [BEGIN#MCQ] or [BEGIN#ESSAY].');
+    }
+
+    if (!result.quizType) {
+      throw new Error('Missing quiz type header. The first non-empty line must be [BEGIN#MCQ] or [BEGIN#ESSAY].');
+    }
+    
     let currentQuestion = null;
-    let state = 'WAITING'; // WAITING, READING_QUESTION, READING_OPTIONS
+    let state = 'WAITING'; // WAITING, READING_QUESTION, READING_OPTIONS, READING_DESCRIPTIONS
 
     const closeQuestionListIfOpen = () => {
       if (!currentQuestion || !currentQuestion._listOpen) return;
@@ -25,8 +69,17 @@ class QuizParser {
       currentQuestion._listTag = null;
       currentQuestion._listAttrs = '';
     };
+
+    const closeDescriptionListIfOpen = () => {
+      if (!currentQuestion || !currentQuestion._descListOpen) return;
+      currentQuestion.descriptionHtmlParts.push(`</${currentQuestion._descListTag}>`);
+      currentQuestion._descListOpen = false;
+      currentQuestion._descListTag = null;
+      currentQuestion._descListAttrs = '';
+    };
     
     for (let i = 0; i < numChildren; i++) {
+      if (i === beginIndex) continue;
       const element = body.getChild(i);
       const type = element.getType();
       let text = '';
@@ -37,12 +90,18 @@ class QuizParser {
         text = element.asListItem().getText().trim();
       }
 
+      // Strict: BEGIN must not appear anywhere else.
+      if (text && /^\[BEGIN#/.test(text)) {
+        throw new Error(`Invalid BEGIN header placement at line ${i + 1}. [BEGIN#${result.quizType}] must be the first non-empty line (currently at line ${beginLine}).`);
+      }
+
       // 1. State Transitions
       const questionTag = this._parseQuestionTag(text);
       if (questionTag) {
         // Close previous
         if (currentQuestion) {
           closeQuestionListIfOpen();
+          closeDescriptionListIfOpen();
           result.questions.push(currentQuestion);
         }
 
@@ -59,8 +118,38 @@ class QuizParser {
       }
       
       if (text.startsWith('[OPTIONS]')) {
+        if (!currentQuestion) {
+          throw new Error(`Invalid [OPTIONS] placement at line ${i + 1}. [OPTIONS] must appear after a [QUESTION#n] tag.`);
+        }
+        if (result.quizType === 'ESSAY') {
+          throw new Error(`Invalid [OPTIONS] for ESSAY at line ${i + 1}. Essay questions must not contain [OPTIONS].`);
+        }
+        if (currentQuestion.hasOptionsTag) {
+          throw new Error(`Duplicate [OPTIONS] tag for Question ${currentQuestion.num} at line ${i + 1}. Only one [OPTIONS] section is allowed per question.`);
+        }
+        currentQuestion.hasOptionsTag = true;
+        currentQuestion.optionsTagLine = i + 1;
         closeQuestionListIfOpen();
+        closeDescriptionListIfOpen();
         state = 'READING_OPTIONS';
+        continue;
+      }
+
+      if (text.startsWith('[DESCRIPTIONS]')) {
+        if (!currentQuestion) {
+          throw new Error(`Invalid [DESCRIPTIONS] placement at line ${i + 1}. [DESCRIPTIONS] must appear after a [QUESTION#n] tag.`);
+        }
+        if (state !== 'READING_QUESTION') {
+          throw new Error(`Invalid [DESCRIPTIONS] placement at line ${i + 1}. [DESCRIPTIONS] must appear immediately after the question content and before [OPTIONS].`);
+        }
+        if (currentQuestion.hasDescriptionsTag) {
+          throw new Error(`Duplicate [DESCRIPTIONS] tag for Question ${currentQuestion.num} at line ${i + 1}. Only one [DESCRIPTIONS] section is allowed per question.`);
+        }
+        currentQuestion.hasDescriptionsTag = true;
+        currentQuestion.descriptionsTagLine = i + 1;
+        closeQuestionListIfOpen();
+        closeDescriptionListIfOpen();
+        state = 'READING_DESCRIPTIONS';
         continue;
       }
 
@@ -100,6 +189,7 @@ class QuizParser {
           const item = element.asListItem();
           const rawText = item.getText().trim();
           let isCorrect = false;
+          const choiceText = rawText.replace(/^\s*<>\s*/, '').trim().replace(/\s+/g, ' ');
 
           // Check if it marks Correct Answer (<> at start)
           // Supported: "<> Option text" (leading whitespace ok)
@@ -116,9 +206,37 @@ class QuizParser {
           currentQuestion.options.push({
             id: `opt_${currentQuestion.options.length}`,
             text: html,
+            choiceText: choiceText,
             isCorrect: isCorrect,
             line: i + 1
           });
+        }
+      }
+      else if (state === 'READING_DESCRIPTIONS') {
+        if (type === DocumentApp.ElementType.PARAGRAPH) {
+          closeDescriptionListIfOpen();
+          const html = this._extractHtml(element.asParagraph(), result.images, currentQuestion.id);
+          if (html) currentQuestion.descriptionHtmlParts.push(`<p>${html}</p>`);
+        } else if (type === DocumentApp.ElementType.TABLE) {
+          closeDescriptionListIfOpen();
+          const html = this._extractTableHtml(element.asTable(), result.images, currentQuestion.id);
+          currentQuestion.descriptionHtmlParts.push(html);
+        } else if (type === DocumentApp.ElementType.LIST_ITEM) {
+          const html = this._extractHtml(element.asListItem(), result.images, currentQuestion.id);
+
+          const info = this._htmlListInfoFromGlyph(element.asListItem().getGlyphType());
+          const nextTag = info.tag;
+          const nextAttrs = info.attrs;
+
+          if (!currentQuestion._descListOpen || currentQuestion._descListTag !== nextTag || currentQuestion._descListAttrs !== nextAttrs) {
+            closeDescriptionListIfOpen();
+            currentQuestion.descriptionHtmlParts.push(`<${nextTag}${nextAttrs}>`);
+            currentQuestion._descListOpen = true;
+            currentQuestion._descListTag = nextTag;
+            currentQuestion._descListAttrs = nextAttrs;
+          }
+
+          currentQuestion.descriptionHtmlParts.push(`<li>${html}</li>`);
         }
       }
     }
@@ -126,12 +244,15 @@ class QuizParser {
     // Push final question
     if (currentQuestion) {
       closeQuestionListIfOpen();
+      closeDescriptionListIfOpen();
       result.questions.push(currentQuestion);
     }
 
     // Finalize content strings
     result.questions.forEach(q => {
       q.content = q.contentHtmlParts.join('');
+      const desc = q.descriptionHtmlParts.join('');
+      q.descriptions = desc ? desc : null;
     });
 
     return result;
@@ -164,6 +285,23 @@ class QuizParser {
     throw new Error(`Invalid question tag "${t}". Use [QUESTION] or [QUESTION#<number>] (e.g., [QUESTION#1]).`);
   }
 
+  /**
+   * Parses the required document header.
+   * Supported:
+   *  - [BEGIN#MCQ]
+   *  - [BEGIN#ESSAY]
+   *
+   * Must be on its own line (no trailing text).
+   * @param {string} text
+   * @returns {{quizType: 'MCQ'|'ESSAY'} | null}
+   */
+  static _parseBeginTag(text) {
+    const t = String(text || '').trim();
+    const m = t.match(/^\[BEGIN#(MCQ|ESSAY)\]$/);
+    if (!m) return null;
+    return { quizType: m[1] };
+  }
+
   static _createQuestionObj(num, line) {
     return {
       num: num,
@@ -171,10 +309,19 @@ class QuizParser {
       line: line,
       content: '', // Final HTML string
       contentHtmlParts: [],
+      descriptions: null,
+      descriptionHtmlParts: [],
+      hasOptionsTag: false,
+      optionsTagLine: 0,
+      hasDescriptionsTag: false,
+      descriptionsTagLine: 0,
       options: []  // { text, isCorrect, line }
       ,_listOpen: false
       ,_listTag: null
       ,_listAttrs: ''
+      ,_descListOpen: false
+      ,_descListTag: null
+      ,_descListAttrs: ''
     };
   }
 

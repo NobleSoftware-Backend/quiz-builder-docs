@@ -155,9 +155,54 @@
       color: #5f6368;
       line-height: 1.4;
     }
+
+    .type-gate {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(245, 245, 245, 0.92);
+      backdrop-filter: blur(1px);
+      z-index: 9998;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .type-gate.active {
+      display: flex;
+    }
+
+    .type-btn {
+      margin-top: 8px;
+    }
+
+    .type-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e8f0fe;
+      color: #185abc;
+      border: 1px solid #c6dafc;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
   </style>
 </head>
 <body>
+  <div class="section">
+    <div class="section-title">🧩 Quiz Type</div>
+    <div class="help-text" style="margin-top:0;">
+      Required header (first non-empty line): <code>[BEGIN#MCQ]</code> or <code>[BEGIN#ESSAY]</code>
+    </div>
+    <div class="help-text" style="margin-top:8px;">
+      Current: <span class="type-pill" id="quizTypeLabel">Not set</span>
+    </div>
+    <button class="btn-warning" onclick="openTypeGate()" style="margin-top:10px;">
+      <span class="icon">♻️</span> Change Type (Reset Document)
+    </button>
+  </div>
+
   <div class="section">
     <div class="section-title">📝 Wrap Selection</div>
     <button class="btn-primary" onclick="wrapQuestionBlock()">
@@ -189,6 +234,9 @@
     </button>
     <button class="btn-secondary" onclick="insertSeparator()">
       <span class="icon">━</span> Add Separator
+    </button>
+    <button class="btn-secondary" onclick="insertDescriptions()">
+      <span class="icon">📝</span> Insert [DESCRIPTIONS]
     </button>
   </div>
   
@@ -233,27 +281,92 @@
       <div class="spinner-subtitle">Please wait. Controls are temporarily disabled.</div>
     </div>
   </div>
+
+  <div class="type-gate" id="typeGate" aria-live="polite">
+    <div class="spinner-card">
+      <div class="spinner-title">Choose Quiz Type</div>
+      <div class="spinner-subtitle">
+        This will insert the required header at the top of the document.
+      </div>
+      <button class="btn-primary type-btn" onclick="resetAndSetType('MCQ')">Set to MCQ (Multiple Choice)</button>
+      <button class="btn-secondary type-btn" onclick="resetAndSetType('ESSAY')">Set to ESSAY</button>
+    </div>
+  </div>
   
   <script>
     let _isBusy = false;
+    let _quizType = null;
 
     function _setControlsDisabled(disabled) {
       document.querySelectorAll('button, select, input, textarea').forEach(function(el) {
+        // Keep type-gate controls usable even when the rest is disabled.
+        if (el.closest && el.closest('#typeGate')) return;
         if (disabled) el.setAttribute('disabled', 'disabled');
         else el.removeAttribute('disabled');
       });
     }
 
-    // Populate preview question list on load
-    (function initPreviewList() {
+    function setQuizTypeLabel(type) {
+      const el = document.getElementById('quizTypeLabel');
+      if (!el) return;
+      el.textContent = type ? type : 'Not set';
+    }
+
+    function openTypeGate() {
+      const gate = document.getElementById('typeGate');
+      gate.classList.add('active');
+      _setControlsDisabled(true);
+    }
+
+    function closeTypeGate() {
+      const gate = document.getElementById('typeGate');
+      gate.classList.remove('active');
+      _setControlsDisabled(false);
+    }
+
+    function refreshQuizType() {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          _quizType = res && res.type ? res.type : null;
+          setQuizTypeLabel(_quizType);
+          if (!_quizType) {
+            openTypeGate();
+          } else {
+            closeTypeGate();
+            loadPreviewList();
+          }
+        })
+        .withFailureHandler(function(err) {
+          _quizType = null;
+          setQuizTypeLabel(null);
+          openTypeGate();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .getQuizTypeHeader();
+    }
+
+    function resetAndSetType(type) {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() {
+          hideSpinner();
+          closeTypeGate();
+          refreshQuizType();
+          showStatus('Quiz type set to ' + type + '. Header inserted at top.', 'info');
+        })
+        .withFailureHandler(function(err) {
+          hideSpinner();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .resetQuizAndSetType(type);
+    }
+
+    function loadPreviewList() {
       google.script.run
         .withSuccessHandler(function(items) {
           const select = document.getElementById('previewSelect');
           if (!select) return;
-
-          // Keep first option (All)
           while (select.options.length > 1) select.remove(1);
-
           (items || []).forEach(function(it) {
             const opt = document.createElement('option');
             opt.value = it.value;
@@ -261,7 +374,15 @@
             select.appendChild(opt);
           });
         })
+        .withFailureHandler(function(err) {
+          showStatus('Error: ' + err.message, 'error');
+        })
         .getPreviewQuestionList();
+    }
+
+    // Initialize: require quiz type first.
+    (function init() {
+      refreshQuizType();
     })();
 
     function openPreview() {
@@ -386,6 +507,17 @@
           showStatus('Error: ' + err.message, 'error');
         })
         .addSeparator();
+    }
+
+    function insertDescriptions() {
+      showSpinner();
+      google.script.run
+        .withSuccessHandler(function() { hideSpinner(); })
+        .withFailureHandler(function(err) {
+          hideSpinner();
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .insertDescriptionsSection();
     }
     
     function validate() {

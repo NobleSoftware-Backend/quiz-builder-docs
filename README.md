@@ -22,14 +22,49 @@ This script is designed to be deployed as a Google Docs Editor Add-on.
 
 The Quiz Builder relies on strict formatting tags in the document:
 
+0. **[BEGIN#MCQ]** or **[BEGIN#ESSAY]**: Required quiz type header.
+  - Must be the **first non-empty line** in the document.
+  - Example: `[BEGIN#MCQ]`
+  - If you need to change type, reset the document and set the type again.
+
 1.  **[QUESTION#n]**: Marks the start of a new question (recommended).
   - Example: `[QUESTION#7]`
   - The `#n` is a human label only; the exporter still uses the document order internally.
   - Invalid tags like `[QUESTION#]` are rejected.
 2.  **[QUESTION]**: Legacy format (still supported) for older documents.
 3.  **Question Text**: The text immediately following the question tag (until the options).
-3.  **[OPTIONS]**: Marks the start of the options list.
-4.  **List**: The options must be a list (e.g., A, B, C).
+4.  **[DESCRIPTIONS]** (optional): Extra explanation/notes for the question, exported as HTML (or `null` if omitted).
+  - Must appear **after** `[QUESTION...]` and **before** `[OPTIONS]`.
+5.  **[OPTIONS]**: Marks the start of the options list.
+6.  **List**: The options must be a list (e.g., A, B, C).
+
+### Optional Descriptions
+
+If you want an optional description/explanation per question, insert a `[DESCRIPTIONS]` section between the question content and `[OPTIONS]`.
+
+```text
+[BEGIN#MCQ]
+
+[QUESTION#1]
+What is the capital of Indonesia?
+
+[DESCRIPTIONS]
+This is a geography question.
+
+[OPTIONS]
+A. <> Jakarta
+B. Bandung
+```
+
+### MCQ vs ESSAY Rules
+
+- **MCQ** (`[BEGIN#MCQ]`)
+  - `[OPTIONS]` is mandatory for every question.
+  - Options must be unique (no duplicate option lines like "blue" and "blue").
+  - Options must not contain images (styling/formatting is OK).
+
+- **ESSAY** (`[BEGIN#ESSAY]`)
+  - `[OPTIONS]` is not allowed anywhere.
 
 ### Marking the Correct Answer
 
@@ -38,6 +73,8 @@ To mark an option as correct, place `<>` at the very beginning of the list item 
 **Example:**
 
 ```text
+[BEGIN#MCQ]
+
 [QUESTION#1]
 What is the capital of Indonesia?
 
@@ -76,20 +113,19 @@ You can use the built-in Google Docs equation editor (Insert > Equation).
   "metadata": { ... },
   "questions": [
     {
+      "id": "q1",
       "content": "<p>Question text...</p>",
+      "descriptions": "<p>Optional description...</p>",
       "options": [
         {
-          "label": "A",
           "content": "Jakarta",
-          "isCorrect": true
+          "is_correct": true
         },
         {
-          "label": "B",
           "content": "Bandung",
-          "isCorrect": false
+          "is_correct": false
         }
-      ],
-      "images": [...]
+      ]
     }
   ]
 }

@@ -32,6 +32,79 @@ function showSidebar() {
 }
 
 /**
+ * Returns the current quiz type header if present.
+ * Header must be the first non-empty line: [BEGIN#MCQ] or [BEGIN#ESSAY]
+ */
+function getQuizTypeHeader() {
+  const body = DocumentApp.getActiveDocument().getBody();
+  const info = _getQuizTypeHeaderInfo_(body);
+  return { type: info ? info.type : null, line: info ? info.line : 0 };
+}
+
+/**
+ * Clears the document and writes a new quiz type header as the first non-empty line.
+ * This is the supported way to change quiz type.
+ */
+function resetQuizAndSetType(type) {
+  const quizType = String(type || '').toUpperCase();
+  if (quizType !== 'MCQ' && quizType !== 'ESSAY') throw new Error('Invalid quiz type. Use MCQ or ESSAY.');
+
+  const doc = DocumentApp.getActiveDocument();
+  const body = doc.getBody();
+
+  // Non-destructive: insert header at the very top.
+  // This guarantees the first non-empty line is the BEGIN tag.
+  const header = body.insertParagraph(0, `[BEGIN#${quizType}]`);
+  header.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+  header.editAsText().setBold(true).setForegroundColor('#444444');
+
+  // Add a spacer after the header for readability.
+  body.insertParagraph(1, '');
+
+  // Strict parser forbids BEGIN anywhere else.
+  // Clear any other BEGIN tags that might exist further down.
+  const n = body.getNumChildren();
+  for (let i = 2; i < n; i++) {
+    const el = body.getChild(i);
+    const t = el.getType();
+    if (t !== DocumentApp.ElementType.PARAGRAPH && t !== DocumentApp.ElementType.LIST_ITEM) continue;
+    const container = t === DocumentApp.ElementType.PARAGRAPH ? el.asParagraph() : el.asListItem();
+    const raw = String(container.getText() || '').trim();
+    if (!raw) continue;
+    if (/^\[BEGIN#(MCQ|ESSAY)\]$/.test(raw) || /^\[BEGIN#/.test(raw)) {
+      container.setText('');
+    }
+  }
+
+  return true;
+}
+
+function _getQuizTypeHeaderInfo_(body) {
+  const n = body.getNumChildren();
+  for (let i = 0; i < n; i++) {
+    const el = body.getChild(i);
+    const t = el.getType();
+    if (t === DocumentApp.ElementType.PARAGRAPH) {
+      const text = el.asParagraph().getText().trim();
+      if (!text) continue;
+      const m = text.match(/^\[BEGIN#(MCQ|ESSAY)\]$/);
+      if (!m) return null;
+      return { type: m[1], line: i + 1 };
+    }
+    if (t === DocumentApp.ElementType.LIST_ITEM) {
+      const text = el.asListItem().getText().trim();
+      if (!text) continue;
+      const m = text.match(/^\[BEGIN#(MCQ|ESSAY)\]$/);
+      if (!m) return null;
+      return { type: m[1], line: i + 1 };
+    }
+    // Any other element means header is missing/invalid
+    return null;
+  }
+  return null;
+}
+
+/**
  * Validates the document and shows a report.
  * Orchestrates calls to QuizParser (Core) and QuizValidator (Services).
  */
@@ -44,7 +117,7 @@ function validateAndShowResults() {
     const parseResult = QuizParser.parse(doc.getBody());
     
     // 2. Validate (Service)
-    const validation = QuizValidator.validate(parseResult.questions);
+    const validation = QuizValidator.validate(parseResult);
 
     // 3. Report Results
     let message = `📊 Validation Results:\n\n`;
@@ -87,7 +160,7 @@ function exportQuiz() {
     const parseResult = QuizParser.parse(doc.getBody());
 
     // 2. Validate
-    const validation = QuizValidator.validate(parseResult.questions);
+    const validation = QuizValidator.validate(parseResult);
     if (!validation.isValid) {
       ui.alert('❌ Export Blocked', 'Validation failed. Please run "Validate Format" to see errors.', ui.ButtonSet.OK);
       return;
@@ -173,6 +246,7 @@ function openPreviewDialog(questionIdOrAll) {
   const fragmentParts = [];
   questions.forEach(q => {
     const content = replaceImages(q.content);
+    const desc = replaceImages(q.descriptions);
     const opts = (q.options || []).map(o => ({
       html: replaceImages(o.text),
       isCorrect: !!o.isCorrect
@@ -185,6 +259,7 @@ function openPreviewDialog(questionIdOrAll) {
           `<div class="q-id">${q.id}</div>` +
         `</div>` +
         `<div class="q-content">${content}</div>` +
+        (desc ? `<div class="q-content q-section q-descriptions"><div class="q-section-title">Descriptions</div>${desc}</div>` : ``) +
         `<ol class="options" type="A">` +
           opts.map(o => `<li${o.isCorrect ? ' class="is-correct"' : ''}>${o.html}</li>`).join('') +
         `</ol>` +
@@ -207,6 +282,9 @@ function wrapAsQuestionBlock() {
   
   const elements = selection.getRangeElements();
   const body = doc.getBody();
+  const headerInfo = _getQuizTypeHeaderInfo_(body);
+  if (!headerInfo) throw new Error('Missing quiz type header. Add [BEGIN#MCQ] or [BEGIN#ESSAY] as the first non-empty line (use the sidebar buttons).');
+  const quizType = headerInfo.type;
   let firstContainer = null;
 
   // Search logic
@@ -226,6 +304,11 @@ function wrapAsQuestionBlock() {
   const qTag = body.insertParagraph(index, `[QUESTION#${nextLabel}]`);
   qTag.setHeading(DocumentApp.ParagraphHeading.NORMAL);
   qTag.editAsText().setBold(true).setForegroundColor('#0066CC');
+
+  if (quizType === 'ESSAY') {
+    // ESSAY: no [OPTIONS]
+    return true;
+  }
 
   // Attempt to find where options might start in selection
   let addedOptions = false;
@@ -260,8 +343,12 @@ function wrapAsOptions() {
   const doc = DocumentApp.getActiveDocument();
   const selection = doc.getSelection();
   if (!selection) return DocumentApp.getUi().alert('Select content first.');
-  
+
   const body = doc.getBody();
+  const headerInfo = _getQuizTypeHeaderInfo_(body);
+  if (!headerInfo) throw new Error('Missing quiz type header. Add [BEGIN#MCQ] or [BEGIN#ESSAY] as the first non-empty line (use the sidebar buttons).');
+  if (headerInfo.type !== 'MCQ') throw new Error('This document is set to ESSAY. [OPTIONS] is not allowed.');
+  
   const elements = selection.getRangeElements();
   const firstEl = elements[0].getElement();
   
@@ -290,6 +377,33 @@ function wrapAsOptions() {
 function insertNewQuestion() { return _insertTemplateAtCursor(true); }
 function insertNewOption() { return _insertTemplateAtCursor(false); }
 function addSeparator() { DocumentApp.getActiveDocument().getBody().appendHorizontalRule(); }
+
+function insertDescriptionsSection() {
+  const doc = DocumentApp.getActiveDocument();
+  const cursor = doc.getCursor();
+  if (!cursor) throw new Error('Place the cursor where you want to insert [DESCRIPTIONS].');
+
+  const body = doc.getBody();
+  let parent = body;
+  let index = body.getNumChildren();
+
+  const el = cursor.getElement();
+  let c = el;
+  while (c.getParent().getType() !== DocumentApp.ElementType.BODY_SECTION) c = c.getParent();
+  parent = c.getParent();
+  index = parent.getChildIndex(c) + 1;
+
+  const tag = parent.insertParagraph(index++, '[DESCRIPTIONS]');
+  tag.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+  tag.editAsText().setBold(true).setForegroundColor('#6A1B9A');
+
+  const p = parent.insertParagraph(index++, 'Description text...');
+  p.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+  p.editAsText().setBold(false).setForegroundColor('#000000');
+
+  parent.insertParagraph(index++, '');
+  return true;
+}
 
 /**
  * Toggles the correct answer mark (<>) on selected list items.
@@ -355,7 +469,13 @@ function _insertTemplateAtCursor(isQuestion) {
     index = parent.getChildIndex(c) + 1;
   }
 
+  const headerInfo = _getQuizTypeHeaderInfo_(body);
+  const quizType = headerInfo ? headerInfo.type : null;
+
   if (isQuestion) {
+    if (!quizType) {
+      throw new Error('Missing quiz type header. Add [BEGIN#MCQ] or [BEGIN#ESSAY] as the first non-empty line (use the sidebar buttons).');
+    }
     const nextLabel = _getNextQuestionLabelNumber_(body);
     const q = parent.insertParagraph(index++, `[QUESTION#${nextLabel}]`);
     q.setHeading(DocumentApp.ParagraphHeading.NORMAL);
@@ -369,22 +489,71 @@ function _insertTemplateAtCursor(isQuestion) {
     // Add empty line for spacing
     parent.insertParagraph(index++, '');
 
-    const o = parent.insertParagraph(index++, '[OPTIONS]');
-    o.setHeading(DocumentApp.ParagraphHeading.NORMAL);
-    o.editAsText().setBold(true).setForegroundColor('#009900');
-    
-    // Explicitly reset style for options
-    const opt1 = parent.insertListItem(index++, '<> Option A (Correct)');
-    opt1.setGlyphType(DocumentApp.GlyphType.LATIN_UPPER);
-    opt1.editAsText().setBold(false).setForegroundColor('#000000');
+    if (quizType === 'MCQ') {
+      const o = parent.insertParagraph(index++, '[OPTIONS]');
+      o.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+      o.editAsText().setBold(true).setForegroundColor('#009900');
+      
+      // Explicitly reset style for options
+      const opt1 = parent.insertListItem(index++, '<> Option A (Correct)');
+      opt1.setGlyphType(DocumentApp.GlyphType.LATIN_UPPER);
+      opt1.editAsText().setBold(false).setForegroundColor('#000000');
 
-    const opt2 = parent.insertListItem(index++, 'Option B');
-    opt2.setGlyphType(DocumentApp.GlyphType.LATIN_UPPER);
-    opt2.editAsText().setBold(false).setForegroundColor('#000000');
+      const opt2 = parent.insertListItem(index++, 'Option B');
+      opt2.setGlyphType(DocumentApp.GlyphType.LATIN_UPPER);
+      opt2.editAsText().setBold(false).setForegroundColor('#000000');
+    } else {
+      // ESSAY: no [OPTIONS]
+      const d = parent.insertParagraph(index++, '[DESCRIPTIONS]');
+      d.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+      d.editAsText().setBold(true).setForegroundColor('#6A1B9A');
+      const dp = parent.insertParagraph(index++, 'Optional explanation...');
+      dp.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+      dp.editAsText().setBold(false).setForegroundColor('#000000');
+    }
   } else {
+    if (!quizType) {
+      throw new Error('Missing quiz type header. Add [BEGIN#MCQ] or [BEGIN#ESSAY] as the first non-empty line (use the sidebar buttons).');
+    }
+    if (quizType !== 'MCQ') {
+      throw new Error('Options are only allowed for MCQ. This document is set to ESSAY.');
+    }
     const item = parent.insertListItem(index, 'New Option');
     item.setGlyphType(DocumentApp.GlyphType.LATIN_UPPER);
     item.editAsText().setBold(false).setForegroundColor('#000000');
+  }
+}
+
+function _insertTemplateAtBodyEnd_(body, isQuestion, quizType) {
+  // Helper used by resetQuizAndSetType
+  // Append using cursor-less logic
+  if (isQuestion) {
+    const nextLabel = _getNextQuestionLabelNumber_(body);
+    const q = body.appendParagraph(`[QUESTION#${nextLabel}]`);
+    q.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+    q.editAsText().setBold(true).setForegroundColor('#0066CC');
+    const content = body.appendParagraph('Question text...');
+    content.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+    content.editAsText().setBold(false).setForegroundColor('#000000');
+    body.appendParagraph('');
+    if (quizType === 'MCQ') {
+      const o = body.appendParagraph('[OPTIONS]');
+      o.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+      o.editAsText().setBold(true).setForegroundColor('#009900');
+      const opt1 = body.appendListItem('<> Option A (Correct)');
+      opt1.setGlyphType(DocumentApp.GlyphType.LATIN_UPPER);
+      opt1.editAsText().setBold(false).setForegroundColor('#000000');
+      const opt2 = body.appendListItem('Option B');
+      opt2.setGlyphType(DocumentApp.GlyphType.LATIN_UPPER);
+      opt2.editAsText().setBold(false).setForegroundColor('#000000');
+    } else {
+      const d = body.appendParagraph('[DESCRIPTIONS]');
+      d.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+      d.editAsText().setBold(true).setForegroundColor('#6A1B9A');
+      const dp = body.appendParagraph('Optional explanation...');
+      dp.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+      dp.editAsText().setBold(false).setForegroundColor('#000000');
+    }
   }
 }
 
