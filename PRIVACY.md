@@ -21,4 +21,4 @@ The Add-on requires access to your Google Drive and Google Docs to:
 We do not track user identity or usage analytics.
 
 ## 4. Contact
-For questions about this policy, please contact the developer at [Your Email].
+For questions about this policy, please contact the developer at developer@visiprima.id 
