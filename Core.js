@@ -139,8 +139,13 @@ class QuizParser {
         if (!currentQuestion) {
           throw new Error(`Invalid [DESCRIPTIONS] placement at line ${i + 1}. [DESCRIPTIONS] must appear after a [QUESTION#n] tag.`);
         }
-        if (state !== 'READING_QUESTION') {
-          throw new Error(`Invalid [DESCRIPTIONS] placement at line ${i + 1}. [DESCRIPTIONS] must appear immediately after the question content and before [OPTIONS].`);
+        // For MCQ: DESCRIPTIONS must come after OPTIONS
+        // For ESSAY: DESCRIPTIONS comes after question content
+        if (result.quizType === 'MCQ' && state !== 'READING_OPTIONS') {
+          throw new Error(`Invalid [DESCRIPTIONS] placement at line ${i + 1}. For MCQ, [DESCRIPTIONS] must appear after [OPTIONS].`);
+        }
+        if (result.quizType === 'ESSAY' && state !== 'READING_QUESTION') {
+          throw new Error(`Invalid [DESCRIPTIONS] placement at line ${i + 1}. For ESSAY, [DESCRIPTIONS] must appear after the question content.`);
         }
         if (currentQuestion.hasDescriptionsTag) {
           throw new Error(`Duplicate [DESCRIPTIONS] tag for Question ${currentQuestion.num} at line ${i + 1}. Only one [DESCRIPTIONS] section is allowed per question.`);

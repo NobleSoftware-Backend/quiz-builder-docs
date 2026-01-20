@@ -33,14 +33,15 @@ The Quiz Builder relies on strict formatting tags in the document:
   - Invalid tags like `[QUESTION#]` are rejected.
 2.  **[QUESTION]**: Legacy format (still supported) for older documents.
 3.  **Question Text**: The text immediately following the question tag (until the options).
-4.  **[DESCRIPTIONS]** (optional): Extra explanation/notes for the question, exported as HTML (or `null` if omitted).
-  - Must appear **after** `[QUESTION...]` and **before** `[OPTIONS]`.
-5.  **[OPTIONS]**: Marks the start of the options list.
-6.  **List**: The options must be a list (e.g., A, B, C).
+4.  **[OPTIONS]**: Marks the start of the options list (MCQ only).
+5.  **List**: The options must be a list (e.g., A, B, C).
+6.  **[DESCRIPTIONS]** (optional): Extra explanation/notes for the question, exported as HTML (or `null` if omitted).
+  - For MCQ: Must appear **after** `[OPTIONS]`.
+  - For ESSAY: Must appear **after** the question content.
 
 ### Optional Descriptions
 
-If you want an optional description/explanation per question, insert a `[DESCRIPTIONS]` section between the question content and `[OPTIONS]`.
+For MCQ, insert a `[DESCRIPTIONS]` section after `[OPTIONS]`. For ESSAY, it goes after the question content.
 
 ```text
 [BEGIN#MCQ]
@@ -48,12 +49,12 @@ If you want an optional description/explanation per question, insert a `[DESCRIP
 [QUESTION#1]
 What is the capital of Indonesia?
 
-[DESCRIPTIONS]
-This is a geography question.
-
 [OPTIONS]
 A. <> Jakarta
 B. Bandung
+
+[DESCRIPTIONS]
+This is a geography question.
 ```
 
 ### MCQ vs ESSAY Rules

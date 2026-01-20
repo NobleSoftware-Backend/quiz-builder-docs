@@ -259,10 +259,10 @@ function openPreviewDialog(questionIdOrAll) {
           `<div class="q-id">${q.id}</div>` +
         `</div>` +
         `<div class="q-content">${content}</div>` +
-        (desc ? `<div class="q-content q-section q-descriptions"><div class="q-section-title">Descriptions</div>${desc}</div>` : ``) +
         `<ol class="options" type="A">` +
           opts.map(o => `<li${o.isCorrect ? ' class="is-correct"' : ''}>${o.html}</li>`).join('') +
         `</ol>` +
+        (desc ? `<div class="q-content q-section q-descriptions"><div class="q-section-title">Descriptions</div>${desc}</div>` : ``) +
       `</div>`
     );
   });
