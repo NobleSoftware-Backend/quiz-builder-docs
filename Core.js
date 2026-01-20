@@ -565,6 +565,7 @@ class QuizParser {
       if (valign === DocumentApp.VerticalAlignment.SUPERSCRIPT) html = `<sup>${html}</sup>`;
       else if (valign === DocumentApp.VerticalAlignment.SUBSCRIPT) html = `<sub>${html}</sub>`;
 
+      if (attrs[DocumentApp.Attribute.STRIKETHROUGH]) html = `<s>${html}</s>`;
       if (attrs[DocumentApp.Attribute.UNDERLINE]) html = `<u>${html}</u>`;
       if (attrs[DocumentApp.Attribute.ITALIC]) html = `<i>${html}</i>`;
       if (attrs[DocumentApp.Attribute.BOLD]) html = `<b>${html}</b>`;

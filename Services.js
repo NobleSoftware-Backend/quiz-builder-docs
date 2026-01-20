@@ -69,15 +69,8 @@ class QuizValidator {
           seen[key] = idx;
         }
       });
-      
-      // 5. Options cannot contain images
-      q.options.forEach(o => {
-        if (typeof o.text === 'string' && /<img\b/i.test(o.text)) {
-          errors.push({ message: `Question ${q.num}: Options cannot contain images. Remove the image from the option.`, line: o.line || q.line });
-        }
-      });
 
-      // 6. Check Empty Options
+      // 5. Check Empty Options
       q.options.forEach((o, idx) => {
           if (!o.text || o.text.trim() === '') {
               warnings.push({ message: `Question ${q.num}, Option ${idx+1}: Option text is empty.`, line: o.line });

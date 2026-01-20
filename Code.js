@@ -407,6 +407,8 @@ function insertDescriptionsSection() {
 
 /**
  * Toggles the correct answer mark (<>) on selected list items.
+ * Only one option per question can be marked as correct.
+ * If marking a new option as correct, removes the mark from any previously marked option.
  * Throws error if selection is not a valid list item.
  */
 function toggleCorrectAnswer() {
@@ -414,6 +416,82 @@ function toggleCorrectAnswer() {
   const selection = doc.getSelection();
   const cursor = doc.getCursor();
   let modified = false;
+
+  /**
+   * Finds all list items that belong to the same [OPTIONS] section as the given list item.
+   * Returns an array of list item elements.
+   */
+  const findSiblingOptions = (listItem) => {
+    const body = doc.getBody();
+    const numChildren = body.getNumChildren();
+    
+    // Find the index of the current list item in the body
+    let currentIndex = -1;
+    for (let i = 0; i < numChildren; i++) {
+      const child = body.getChild(i);
+      if (child.getType() === DocumentApp.ElementType.LIST_ITEM) {
+        if (child.asListItem().getText() === listItem.getText() && 
+            child.asListItem().getListId() === listItem.getListId()) {
+          currentIndex = i;
+          break;
+        }
+      }
+    }
+    
+    if (currentIndex === -1) return [];
+    
+    // Find the [OPTIONS] tag before this list item
+    let optionsStart = -1;
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const child = body.getChild(i);
+      if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+        const text = child.asParagraph().getText().trim();
+        if (text.startsWith('[OPTIONS]')) {
+          optionsStart = i;
+          break;
+        }
+        // Stop if we hit a [QUESTION] or [DESCRIPTIONS] tag
+        if (text.startsWith('[QUESTION') || text.startsWith('[DESCRIPTIONS]')) {
+          break;
+        }
+      }
+    }
+    
+    if (optionsStart === -1) return [];
+    
+    // Collect all list items after [OPTIONS] until we hit a non-list-item
+    const siblings = [];
+    for (let i = optionsStart + 1; i < numChildren; i++) {
+      const child = body.getChild(i);
+      if (child.getType() === DocumentApp.ElementType.LIST_ITEM) {
+        siblings.push(child.asListItem());
+      } else if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+        const text = child.asParagraph().getText().trim();
+        // Stop at next section tag
+        if (text.startsWith('[QUESTION') || text.startsWith('[OPTIONS]') || 
+            text.startsWith('[DESCRIPTIONS]') || text.startsWith('[BEGIN#')) {
+          break;
+        }
+        // Empty paragraphs are ok, continue
+        if (text) break;
+      } else {
+        break;
+      }
+    }
+    
+    return siblings;
+  };
+
+  /**
+   * Removes the correct answer mark from a list item if it has one.
+   */
+  const removeMarkFromItem = (listItem) => {
+    const text = listItem.getText();
+    const match = text.match(/^\s*<>\s?/);
+    if (match) {
+      listItem.editAsText().deleteText(0, match[0].length - 1);
+    }
+  };
 
   const processElement = (el) => {
     // Navigate up to find List Item
@@ -423,18 +501,27 @@ function toggleCorrectAnswer() {
     }
 
     if (current && current.getType() === DocumentApp.ElementType.LIST_ITEM) {
-      const text = current.getText();
-      const textObj = current.editAsText();
+      const listItem = current.asListItem();
+      const text = listItem.getText();
+      const textObj = listItem.editAsText();
       
       // Check for existing mark (start of string)
       // Regex: Optional whitespace, <>, optional space
       const match = text.match(/^\s*<>\s?/);
       
       if (match) {
-        // Remove mark
+        // Remove mark (toggle off)
         textObj.deleteText(0, match[0].length - 1);
       } else {
-        // Add mark
+        // Add mark - but first remove from any sibling options
+        const siblings = findSiblingOptions(listItem);
+        siblings.forEach(sibling => {
+          if (sibling !== listItem) {
+            removeMarkFromItem(sibling);
+          }
+        });
+        
+        // Now add the mark to this item
         textObj.insertText(0, '<> ');
       }
       modified = true;

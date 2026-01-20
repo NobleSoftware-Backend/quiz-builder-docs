@@ -61,7 +61,7 @@ B. Bandung
 - **MCQ** (`[BEGIN#MCQ]`)
   - `[OPTIONS]` is mandatory for every question.
   - Options must be unique (no duplicate option lines like "blue" and "blue").
-  - Options must not contain images (styling/formatting is OK).
+  - Options may contain images and formatting.
 
 - **ESSAY** (`[BEGIN#ESSAY]`)
   - `[OPTIONS]` is not allowed anywhere.
